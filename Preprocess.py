@@ -34,82 +34,108 @@ def getWordIndexs(tokens, answer):
             break
     return s
 
-with open("data/train-v2.0.json") as fl:
-    data = json.load(fl)
-    data = data["data"]
 
-vocab = {
-    "<start>" : 0
-}
-vocab_index = 1
-context_index = 1
-question_index = 1
-count = 0
-total = 0
+def processTrainSet(data):
+    vocab = {}
+    vocab["<pad>"] = 0
+    vocab["<start>"] = 1
 
-max_context = 0
-max_question = 0
+    vocab_index = 2
+    context_index = 1
+    question_index = 1
+    count = 0
+    total = 0
 
-question_processed = {}
-context_processed = {}
+    max_context = 0
+    max_question = 0
 
-for elem in data:
-    for para in elem["paragraphs"]:
-        context =  para["context"].lower()
-        tokens = spacyTokenizer(context)
-        tokens = ["<start>"] + tokens
-        if len(tokens) > max_context:
-            max_context = len(tokens)
+    question_processed = {}
+    context_processed = {}
 
-        for word in tokens:
-            if word not in vocab:
-                vocab[word] = vocab_index
-                vocab_index = vocab_index + 1
+    for elem in data:
+        for para in elem["paragraphs"]:
+            context =  para["context"].lower()
+            tokens = spacyTokenizer(context)
+            tokens = ["<start>"] + tokens
+            if len(tokens) > max_context:
+                max_context = len(tokens)
 
-        inverse_token = [vocab[w] for w in tokens]
-        context_processed[context_index] = inverse_token
-        if context_index % 100 == 0:
-            with open("processedData/context/" + str(context_index) + ".json", "w+") as fl:
-                json.dump(context_processed, fl)
-            context_processed = {}
-
-        for qas in para["qas"]:
-            q_tokens = spacyTokenizer(qas["question"].lower())
-            if len(q_tokens) > max_question:
-                max_question = len(tokens)
-
-            for word in q_tokens:
+            for word in tokens:
                 if word not in vocab:
                     vocab[word] = vocab_index
                     vocab_index = vocab_index + 1
 
-            total = total + 1               
-            if len(qas["answers"]) > 0:
-                answer_text = qas["answers"][0]['text'].lower()
-                answer_text_token = spacyTokenizer(answer_text)
-                ans_span = getWordIndexs(tokens, answer_text_token)
-                if qas["is_impossible"] != True and " ".join([tokens[i] for i in ans_span]) != " ".join(answer_text_token):
-                    count = count + 1
+            inverse_token = [vocab[w] for w in tokens]
+            context_processed[context_index] = inverse_token
+            if context_index % 100 == 0:
+                with open("processedData/context/" + str(context_index) + ".json", "w+") as fl:
+                    json.dump(context_processed, fl)
+                context_processed = {}
 
-            if qas["is_impossible"] == True or len(ans_span) == 0:
-                ans_span = [0]
+            for qas in para["qas"]:
+                q_tokens = spacyTokenizer(qas["question"].lower())
+                if len(q_tokens) > max_question:
+                    max_question = len(tokens)
 
-            question_processed[question_index] = {
-                "context" : context_index,
-                "question" : [vocab[w] for w in q_tokens],
-                "start" : ans_span[0],
-                "end" : ans_span[-1]
-            }
+                for word in q_tokens:
+                    if word not in vocab:
+                        vocab[word] = vocab_index
+                        vocab_index = vocab_index + 1
 
-            if question_index % 1000 == 0:
-                with open("processedData/question/" + str(question_index) + ".json", "w+") as fl:
-                    json.dump({"data" : question_processed}, fl)
-                question_processed = {}
-            question_index = question_index + 1
-        context_index = context_index + 1
+                total = total + 1               
+                if len(qas["answers"]) > 0:
+                    answer_text = qas["answers"][0]['text'].lower()
+                    answer_text_token = spacyTokenizer(answer_text)
+                    ans_span = getWordIndexs(tokens, answer_text_token)
+                    if qas["is_impossible"] != True and " ".join([tokens[i] for i in ans_span]) != " ".join(answer_text_token):
+                        count = count + 1
 
-with open("processedData/context/" + str(context_index) + ".json", "w+") as fl:
-    json.dump(context_processed, fl)
+                if qas["is_impossible"] == True or len(ans_span) == 0:
+                    ans_span = [0]
 
-with open("processedData/question/" + str(question_index) + ".json", "w+") as fl:
-    json.dump({"data" : question_processed}, fl)
+                question_processed[question_index] = {
+                    "context" : context_index,
+                    "question" : [vocab[w] for w in q_tokens],
+                    "start" : ans_span[0],
+                    "end" : ans_span[-1]
+                }
+
+                if question_index % 1000 == 0:
+                    with open("processedData/question/" + str(question_index) + ".json", "w+") as fl:
+                        json.dump({"data" : question_processed}, fl)
+                    question_processed = {}
+                question_index = question_index + 1
+            context_index = context_index + 1
+
+    with open("processedData/vocab.json", "w+") as fl:
+        json.dump(vocab, fl)
+
+    meta = {
+        "max_context" : max_context,
+        "max_question" : max_question,
+        "num_context" : context_index,
+        "num_question" : question_index,
+        "vocab_length" : len(vocab),
+        "pad_index" : vocab["<pad>"]
+    }
+
+    with open("processedData/meta.json", "w+") as fl:
+        json.dump(meta, fl)
+
+    context_index = ((int(context_index / 100) + 1) * 100)
+    with open("processedData/context/" + str(context_index) + ".json", "w+") as fl:
+        json.dump(context_processed, fl)
+
+    question_index = ((int(question_index / 1000) + 1) * 1000)
+    with open("processedData/question/" + str(question_index) + ".json", "w+") as fl:
+        json.dump({"data" : question_processed}, fl)
+
+
+
+
+if __name__ == "__main__":
+    with open("data/train-v2.0.json") as fl:
+        data = json.load(fl)
+        data = data["data"]
+
+    processTrainSet(data)
