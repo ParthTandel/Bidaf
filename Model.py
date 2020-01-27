@@ -1,26 +1,25 @@
 
 import os
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+import tensorflow as tf
 from tensorflow.keras import backend as K
 from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.layers import Input, LSTM, Dense, Embedding, Bidirectional, TimeDistributed
 from tensorflow.keras.activations import softmax
 from tensorflow.keras.utils import plot_model
+from tensorflow.keras.optimizers import Adadelta
+from Utils import accuracy, negative_log_prob
 
-import numpy as np
-import json
-
-
-def BuildModel(num_context_token, num_query_token, num_hidden_state = 200):
+def BuildModel(num_context_token, num_query_token, num_hidden_state = 200, vocab_length=10000):
     # context and query layer
 
     query_inputs = Input(shape=(num_query_token, ))
-    query_embedding = Embedding(input_dim=num_query_token, output_dim=num_hidden_state, mask_zero=True)(query_inputs)
+    query_embedding = Embedding(input_dim=vocab_length, output_dim=num_hidden_state, input_length = num_query_token, mask_zero=True)(query_inputs)
     query_lstm = Bidirectional(LSTM(num_hidden_state, return_sequences = True))
     query_output = query_lstm(query_embedding)
 
     context_inputs = Input(shape=(num_context_token, ))
-    context_embedding = Embedding(input_dim=num_context_token, output_dim=num_hidden_state, mask_zero=True)(context_inputs)
+    context_embedding = Embedding(input_dim=vocab_length, output_dim=num_hidden_state, input_length = num_context_token, mask_zero=True)(context_inputs)
     context_lstm = Bidirectional(LSTM(num_hidden_state, return_sequences=True))
     context_output = context_lstm(context_embedding)
 
@@ -80,20 +79,12 @@ def BuildModel(num_context_token, num_query_token, num_hidden_state = 200):
     end_span =  K.squeeze(end_span, axis=-1)
     end_span = softmax(end_span)
 
+    # output 
+    output = K.stack((begin_span, end_span))
 
-    model = Model([query_inputs, context_inputs],[begin_span, end_span])
-    model.summary()
-
-    print(begin_span.shape, end_span.shape)
-
-    plot_model(model, to_file='model_plot.png', show_shapes=True, show_layer_names=True)
+    model = Model([context_inputs, query_inputs], output)
+    adadelta = Adadelta(lr=0.01)
+    model.compile(loss=negative_log_prob, optimizer=adadelta, metrics=[accuracy])
+    # plot_model(model, to_file='model_plot.png', show_shapes=True, show_layer_names=True)
 
     return model
-
-
-if __name__ == "__main__":
-    num_query_token = 10
-    num_context_token = 20
-    num_hidden_state = 200
-
-    model = BuildModel(num_context_token, num_query_token, num_hidden_state)
